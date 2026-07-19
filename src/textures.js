@@ -324,6 +324,105 @@ export function makeFireflySprite() {
   return tex
 }
 
+// soft flower petal — near-white with gentle shading + a faint crease,
+// tinted per-instance so a drift of petals varies in colour
+export function makePetalTexture() {
+  const W = 128
+  const H = 168
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const cx = c.getContext('2d')
+  cx.translate(W / 2, H / 2)
+  const g = cx.createRadialGradient(0, -H * 0.14, 3, 0, H * 0.06, H * 0.62)
+  g.addColorStop(0, 'rgba(255,255,255,1)')
+  g.addColorStop(0.6, 'rgba(252,247,242,0.97)')
+  g.addColorStop(1, 'rgba(228,218,206,0.82)')
+  cx.fillStyle = g
+  cx.beginPath()
+  cx.moveTo(0, -H * 0.46)
+  cx.bezierCurveTo(W * 0.52, -H * 0.16, W * 0.4, H * 0.4, 0, H * 0.46)
+  cx.bezierCurveTo(-W * 0.4, H * 0.4, -W * 0.52, -H * 0.16, 0, -H * 0.46)
+  cx.closePath()
+  cx.fill()
+  // faint central crease + soft edge shade for form
+  cx.strokeStyle = 'rgba(198,176,160,0.22)'
+  cx.lineWidth = 1.4
+  cx.beginPath()
+  cx.moveTo(0, -H * 0.4)
+  cx.quadraticCurveTo(W * 0.05, 0, 0, H * 0.4)
+  cx.stroke()
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+// three dove silhouettes (wings down / level / up) for a gentle flap cycle
+export function makeDoveFrames() {
+  const W = 176
+  const H = 112
+  const make = (raise) => {
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    const cx = c.getContext('2d')
+    cx.translate(W / 2, H / 2 + 8)
+    cx.fillStyle = '#ffffff'
+    cx.strokeStyle = '#ffffff'
+    cx.lineJoin = 'round'
+    cx.lineCap = 'round'
+    // wings — a soft gull sweep; raise ∈ [-1..1] lifts the wingtips
+    const tip = -8 - raise * 30
+    cx.lineWidth = 9
+    cx.beginPath()
+    cx.moveTo(-64, tip)
+    cx.quadraticCurveTo(-22, 10, 0, 3)
+    cx.quadraticCurveTo(22, 10, 64, tip)
+    cx.stroke()
+    // body + tail
+    cx.beginPath()
+    cx.moveTo(-30, 4)
+    cx.quadraticCurveTo(-6, 10, 14, 5)
+    cx.quadraticCurveTo(24, 2, 20, -3)
+    cx.quadraticCurveTo(6, 0, -30, 4)
+    cx.closePath()
+    cx.fill()
+    // head
+    cx.beginPath()
+    cx.ellipse(16, -3, 5.5, 5, 0, 0, Math.PI * 2)
+    cx.fill()
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
+  }
+  return [make(-1), make(0), make(1)]
+}
+
+// soft light-ray sprite — bright at top, feathered at the sides, fading down
+export function makeRaySprite() {
+  const W = 64
+  const H = 512
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const cx = c.getContext('2d')
+  const vg = cx.createLinearGradient(0, 0, 0, H)
+  vg.addColorStop(0, 'rgba(255,244,214,0.95)')
+  vg.addColorStop(1, 'rgba(255,244,214,0)')
+  cx.fillStyle = vg
+  cx.fillRect(0, 0, W, H)
+  const hg = cx.createLinearGradient(0, 0, W, 0)
+  hg.addColorStop(0, 'rgba(0,0,0,1)')
+  hg.addColorStop(0.5, 'rgba(0,0,0,0)')
+  hg.addColorStop(1, 'rgba(0,0,0,1)')
+  cx.globalCompositeOperation = 'destination-out'
+  cx.fillStyle = hg
+  cx.fillRect(0, 0, W, H)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
 // image loading + processing helpers for the generated (Higgsfield) textures
 export function loadImage(src) {
   return new Promise((resolve, reject) => {

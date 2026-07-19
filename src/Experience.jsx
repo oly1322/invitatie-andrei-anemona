@@ -1,9 +1,9 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Environment, Lightformer } from '@react-three/drei'
 import * as THREE from 'three'
 import Envelope from './Envelope'
-import { makeDustSprite, makeFireflySprite } from './textures'
+import { makeDustSprite, makePetalTexture, makeDoveFrames, makeRaySprite } from './textures'
 
 function CameraRig({ phase }) {
   const { camera, size } = useThree()
@@ -75,73 +75,161 @@ function GoldDust({ count = 130 }) {
   )
 }
 
-// fireflies — tiny warm lights wandering organically through the scene,
-// each with its own flight path and slow breathing flicker
-function Fireflies({ count = 38 }) {
+// drifting flower petals — tumbling at several depths, catching the light
+// (MeshStandard so the directional lights glint on them as they turn)
+function Petals({ count = 42 }) {
   const ref = useRef()
-  const sprite = useMemo(() => makeFireflySprite(), [])
-  const flies = useMemo(() => {
+  const petalTex = useMemo(() => makePetalTexture(), [])
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const data = useMemo(() => {
+    const tints = ['#f8ece4', '#f4ddd2', '#f7f0e2', '#efdcc2', '#ecccc4', '#f6e7d8']
     const arr = []
     for (let i = 0; i < count; i++) {
       arr.push({
-        bx: (Math.random() - 0.5) * 16,
-        by: (Math.random() - 0.5) * 10,
-        bz: -1.2 - Math.random() * 5.5,
-        ax: 0.6 + Math.random() * 1.4,
-        ay: 0.5 + Math.random() * 1.1,
-        fx: 0.05 + Math.random() * 0.14,
-        fy: 0.06 + Math.random() * 0.16,
-        fz: 0.04 + Math.random() * 0.1,
-        p1: Math.random() * Math.PI * 2,
-        p2: Math.random() * Math.PI * 2,
-        p3: Math.random() * Math.PI * 2,
-        ff: 0.25 + Math.random() * 0.8,
-        fp: Math.random() * Math.PI * 2,
+        x: (Math.random() - 0.5) * 17,
+        y: (Math.random() - 0.5) * 14,
+        z: -3.5 + Math.random() * 5,
+        rx: Math.random() * 6.28,
+        ry: Math.random() * 6.28,
+        rz: Math.random() * 6.28,
+        srx: (Math.random() - 0.5) * 1.1,
+        sry: (Math.random() - 0.5) * 0.9,
+        srz: (Math.random() - 0.5) * 0.7,
+        fall: 0.32 + Math.random() * 0.5,
+        sway: 0.3 + Math.random() * 0.7,
+        swAmp: 0.4 + Math.random() * 0.7,
+        swph: Math.random() * 6.28,
+        size: 0.16 + Math.random() * 0.22,
+        tint: tints[i % tints.length],
       })
     }
     return arr
   }, [count])
-  const positions = useMemo(() => new Float32Array(count * 3), [count])
-  const colors = useMemo(() => new Float32Array(count * 3), [count])
 
-  useFrame((state) => {
+  useEffect(() => {
+    data.forEach((p, i) => ref.current.setColorAt(i, new THREE.Color(p.tint)))
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
+  }, [data])
+
+  useFrame((state, delta) => {
     const t = state.clock.elapsedTime
-    const pos = ref.current.geometry.attributes.position
-    const col = ref.current.geometry.attributes.color
     for (let i = 0; i < count; i++) {
-      const f = flies[i]
-      pos.array[i * 3] =
-        f.bx + Math.sin(t * f.fx + f.p1) * f.ax + Math.sin(t * 0.31 + f.p2) * 0.5
-      pos.array[i * 3 + 1] =
-        f.by + Math.sin(t * f.fy + f.p2) * f.ay + Math.cos(t * 0.21 + f.p3) * 0.35
-      pos.array[i * 3 + 2] = f.bz + Math.sin(t * f.fz + f.p3) * 0.6
-      // slow breathing glow, occasionally dimming almost out
-      const breathe = 0.5 + 0.5 * Math.sin(t * f.ff + f.fp)
-      const glow = 0.18 + 0.82 * breathe * breathe
-      col.array[i * 3] = 1.0 * glow
-      col.array[i * 3 + 1] = 0.82 * glow
-      col.array[i * 3 + 2] = 0.45 * glow
+      const p = data[i]
+      p.y -= p.fall * delta
+      if (p.y < -7.2) {
+        p.y = 7.2
+        p.x = (Math.random() - 0.5) * 17
+      }
+      dummy.position.set(p.x + Math.sin(t * p.sway + p.swph) * p.swAmp, p.y, p.z)
+      dummy.rotation.set(p.rx + t * p.srx, p.ry + t * p.sry, p.rz + t * p.srz)
+      dummy.scale.setScalar(p.size)
+      dummy.updateMatrix()
+      ref.current.setMatrixAt(i, dummy.matrix)
     }
-    pos.needsUpdate = true
-    col.needsUpdate = true
+    ref.current.instanceMatrix.needsUpdate = true
   })
 
   return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        map={sprite}
-        size={0.17}
-        sizeAttenuation
+    <instancedMesh ref={ref} args={[undefined, undefined, count]}>
+      <planeGeometry args={[1, 1.28]} />
+      <meshStandardMaterial
+        map={petalTex}
         transparent
-        vertexColors
-        opacity={0.95}
+        side={THREE.DoubleSide}
+        roughness={0.62}
+        metalness={0}
         depthWrite={false}
+        alphaTest={0.03}
       />
-    </points>
+    </instancedMesh>
+  )
+}
+
+// distant doves gliding across the far background with a gentle wing flap
+const DOVE_CYCLE = [0, 1, 2, 1]
+function Doves({ count = 3 }) {
+  const frames = useMemo(() => makeDoveFrames(), [])
+  const refs = useRef([])
+  const data = useMemo(() => {
+    const arr = []
+    for (let i = 0; i < count; i++) {
+      arr.push({
+        x: (Math.random() - 0.5) * 22,
+        y: 2.6 + Math.random() * 3.2,
+        z: -5 - Math.random() * 2.6,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        speed: 0.5 + Math.random() * 0.45,
+        bob: 0.28 + Math.random() * 0.32,
+        bobF: 0.4 + Math.random() * 0.3,
+        bph: Math.random() * 6.28,
+        flapF: 2.6 + Math.random() * 1.8,
+        fph: Math.random() * 10,
+        size: 1.0 + Math.random() * 0.7,
+      })
+    }
+    return arr
+  }, [count])
+
+  useFrame((state, delta) => {
+    const t = state.clock.elapsedTime
+    for (let i = 0; i < count; i++) {
+      const d = data[i]
+      const m = refs.current[i]
+      if (!m) continue
+      d.x += d.dir * d.speed * delta
+      if (d.x > 13) { d.x = -13; d.y = 2.6 + Math.random() * 3.2 }
+      if (d.x < -13) { d.x = 13; d.y = 2.6 + Math.random() * 3.2 }
+      m.position.set(d.x, d.y + Math.sin(t * d.bobF + d.bph) * d.bob, d.z)
+      m.scale.set(d.dir * d.size, d.size, 1)
+      const fi = DOVE_CYCLE[Math.floor((t * d.flapF + d.fph) % 4)]
+      if (m.material.map !== frames[fi]) {
+        m.material.map = frames[fi]
+        m.material.needsUpdate = true
+      }
+    }
+  })
+
+  return data.map((d, i) => (
+    <mesh key={i} ref={(el) => (refs.current[i] = el)} position={[d.x, d.y, d.z]}>
+      <planeGeometry args={[1.7, 1.08]} />
+      <meshBasicMaterial map={frames[0]} transparent color="#8f8676" opacity={0.42} depthWrite={false} />
+    </mesh>
+  ))
+}
+
+// soft god-rays slanting down from above, for atmosphere and depth
+function GodRays() {
+  const rayTex = useMemo(() => makeRaySprite(), [])
+  const group = useRef()
+  useFrame((state) => {
+    const t = state.clock.elapsedTime
+    const kids = group.current.children
+    for (let i = 0; i < kids.length; i++) {
+      kids[i].material.opacity = 0.05 + 0.035 * (0.5 + 0.5 * Math.sin(t * 0.25 + i * 1.7))
+    }
+  })
+  const rays = [
+    [-3.4, -0.32, 3.4],
+    [-0.6, -0.1, 2.6],
+    [2.2, 0.12, 3.0],
+    [4.2, 0.3, 2.2],
+  ]
+  return (
+    <group ref={group} position={[0, 3.4, -4.2]}>
+      {rays.map(([x, rot, w], i) => (
+        <mesh key={i} position={[x, 0, 0]} rotation={[0, 0, rot]}>
+          <planeGeometry args={[w, 15]} />
+          <meshBasicMaterial
+            map={rayTex}
+            transparent
+            opacity={0.07}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            color="#fff0c8"
+          />
+        </mesh>
+      ))}
+    </group>
   )
 }
 
@@ -161,8 +249,10 @@ export default function Experience({ phase, onBegin, onRevealed }) {
         <Lightformer form="rect" intensity={0.5} color="#dfe6f5" position={[-5, 0, 2]} scale={[3, 6, 1]} rotation-y={Math.PI / 4} />
       </Environment>
 
-      <Fireflies />
-      <GoldDust />
+      <GodRays />
+      <Doves />
+      <Petals />
+      <GoldDust count={70} />
 
       <Envelope onBegin={onBegin} onRevealed={onRevealed} />
     </>
