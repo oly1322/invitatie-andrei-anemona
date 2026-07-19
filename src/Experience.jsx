@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Environment, Lightformer } from '@react-three/drei'
+import { Environment, Lightformer, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import Envelope from './Envelope'
-import { makeDustSprite, makePetalTexture, makeDoveFrames, makeRaySprite } from './textures'
+import { makeDustSprite, makeRaySprite } from './textures'
+
+const PETAL_SRCS = [
+  '/textures/petals/petal1.png',
+  '/textures/petals/petal2.png',
+  '/textures/petals/petal3.png',
+  '/textures/petals/petal4.png',
+]
 
 function CameraRig({ phase }) {
   const { camera, size } = useThree()
@@ -75,50 +82,41 @@ function GoldDust({ count = 130 }) {
   )
 }
 
-// drifting flower petals — tumbling at several depths, catching the light
-// (MeshStandard so the directional lights glint on them as they turn)
-function Petals({ count = 42 }) {
+// one drift of a single petal photo, tumbling and falling at several depths
+function PetalLayer({ texture, count }) {
   const ref = useRef()
-  const petalTex = useMemo(() => makePetalTexture(), [])
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const data = useMemo(() => {
-    const tints = ['#f8ece4', '#f4ddd2', '#f7f0e2', '#efdcc2', '#ecccc4', '#f6e7d8']
     const arr = []
     for (let i = 0; i < count; i++) {
       arr.push({
-        x: (Math.random() - 0.5) * 17,
-        y: (Math.random() - 0.5) * 14,
+        x: (Math.random() - 0.5) * 12,
+        y: (Math.random() - 0.5) * 13,
         z: -3.5 + Math.random() * 5,
         rx: Math.random() * 6.28,
         ry: Math.random() * 6.28,
         rz: Math.random() * 6.28,
-        srx: (Math.random() - 0.5) * 1.1,
-        sry: (Math.random() - 0.5) * 0.9,
-        srz: (Math.random() - 0.5) * 0.7,
-        fall: 0.32 + Math.random() * 0.5,
+        srx: (Math.random() - 0.5) * 0.85,
+        sry: (Math.random() - 0.5) * 0.8,
+        srz: (Math.random() - 0.5) * 0.55,
+        fall: 0.28 + Math.random() * 0.45,
         sway: 0.3 + Math.random() * 0.7,
-        swAmp: 0.4 + Math.random() * 0.7,
+        swAmp: 0.4 + Math.random() * 0.8,
         swph: Math.random() * 6.28,
-        size: 0.16 + Math.random() * 0.22,
-        tint: tints[i % tints.length],
+        size: 0.28 + Math.random() * 0.42,
       })
     }
     return arr
   }, [count])
-
-  useEffect(() => {
-    data.forEach((p, i) => ref.current.setColorAt(i, new THREE.Color(p.tint)))
-    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
-  }, [data])
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime
     for (let i = 0; i < count; i++) {
       const p = data[i]
       p.y -= p.fall * delta
-      if (p.y < -7.2) {
-        p.y = 7.2
-        p.x = (Math.random() - 0.5) * 17
+      if (p.y < -7) {
+        p.y = 7
+        p.x = (Math.random() - 0.5) * 12
       }
       dummy.position.set(p.x + Math.sin(t * p.sway + p.swph) * p.swAmp, p.y, p.z)
       dummy.rotation.set(p.rx + t * p.srx, p.ry + t * p.sry, p.rz + t * p.srz)
@@ -131,69 +129,31 @@ function Petals({ count = 42 }) {
 
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, count]}>
-      <planeGeometry args={[1, 1.28]} />
-      <meshStandardMaterial
-        map={petalTex}
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial
+        map={texture}
         transparent
+        alphaTest={0.32}
         side={THREE.DoubleSide}
-        roughness={0.62}
-        metalness={0}
         depthWrite={false}
-        alphaTest={0.03}
+        toneMapped={false}
       />
     </instancedMesh>
   )
 }
 
-// distant doves gliding across the far background with a gentle wing flap
-const DOVE_CYCLE = [0, 1, 2, 1]
-function Doves({ count = 3 }) {
-  const frames = useMemo(() => makeDoveFrames(), [])
-  const refs = useRef([])
-  const data = useMemo(() => {
-    const arr = []
-    for (let i = 0; i < count; i++) {
-      arr.push({
-        x: (Math.random() - 0.5) * 22,
-        y: 2.6 + Math.random() * 3.2,
-        z: -5 - Math.random() * 2.6,
-        dir: Math.random() < 0.5 ? 1 : -1,
-        speed: 0.5 + Math.random() * 0.45,
-        bob: 0.28 + Math.random() * 0.32,
-        bobF: 0.4 + Math.random() * 0.3,
-        bph: Math.random() * 6.28,
-        flapF: 2.6 + Math.random() * 1.8,
-        fph: Math.random() * 10,
-        size: 1.0 + Math.random() * 0.7,
-      })
-    }
-    return arr
-  }, [count])
-
-  useFrame((state, delta) => {
-    const t = state.clock.elapsedTime
-    for (let i = 0; i < count; i++) {
-      const d = data[i]
-      const m = refs.current[i]
-      if (!m) continue
-      d.x += d.dir * d.speed * delta
-      if (d.x > 13) { d.x = -13; d.y = 2.6 + Math.random() * 3.2 }
-      if (d.x < -13) { d.x = 13; d.y = 2.6 + Math.random() * 3.2 }
-      m.position.set(d.x, d.y + Math.sin(t * d.bobF + d.bph) * d.bob, d.z)
-      m.scale.set(d.dir * d.size, d.size, 1)
-      const fi = DOVE_CYCLE[Math.floor((t * d.flapF + d.fph) % 4)]
-      if (m.material.map !== frames[fi]) {
-        m.material.map = frames[fi]
-        m.material.needsUpdate = true
-      }
-    }
-  })
-
-  return data.map((d, i) => (
-    <mesh key={i} ref={(el) => (refs.current[i] = el)} position={[d.x, d.y, d.z]}>
-      <planeGeometry args={[1.7, 1.08]} />
-      <meshBasicMaterial map={frames[0]} transparent color="#8f8676" opacity={0.42} depthWrite={false} />
-    </mesh>
+// drifting real flower petals — four photographed petals, cut out, tumbling
+// through the scene at several depths
+function Petals({ perLayer = 9 }) {
+  const textures = useTexture(PETAL_SRCS)
+  useMemo(() => {
+    textures.forEach((t) => {
+      t.colorSpace = THREE.SRGBColorSpace
+      t.anisotropy = 4
+    })
+  }, [textures])
+  return textures.map((tex, i) => (
+    <PetalLayer key={i} texture={tex} count={perLayer} />
   ))
 }
 
@@ -250,7 +210,6 @@ export default function Experience({ phase, onBegin, onRevealed }) {
       </Environment>
 
       <GodRays />
-      <Doves />
       <Petals />
       <GoldDust count={70} />
 
