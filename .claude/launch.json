@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "invitatie",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Users/andreiolaru/Downloads/invitatie-aa",
+      "port": 5173
+    }
+  ]
+}
